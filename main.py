@@ -32,7 +32,7 @@ def fetch_rss_news(query, hl="hr", gl="HR"):
 def call_gemini_json(prompt):
     """Poziva Gemini API i traži strogi JSON odgovor"""
     clean_key = GEMINI_KEY.strip() if GEMINI_KEY else ""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={clean_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={clean_key}"
     payload = {
         "contents": [{
             "parts": [{"text": prompt}]
@@ -47,11 +47,20 @@ def call_gemini_json(prompt):
         'Content-Type': 'application/json',
         'x-goog-api-key': clean_key
     }
-    req = urllib.request.Request(url, data=data, headers=headers, method='POST')
-    with urllib.request.urlopen(req, timeout=90) as response:
-        result = json.loads(response.read().decode('utf-8'))
-        raw_text = result['candidates'][0]['content']['parts'][0]['text']
-        return json.loads(raw_text)
+    
+    # Probaj primarni model (gemini-2.5-flash), ako ne uspe probaj gemini-flash-latest
+    for model_name in ["gemini-2.5-flash", "gemini-flash-latest"]:
+        try:
+            m_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
+            req = urllib.request.Request(m_url, data=data, headers=headers, method='POST')
+            with urllib.request.urlopen(req, timeout=150) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                raw_text = result['candidates'][0]['content']['parts'][0]['text']
+                return json.loads(raw_text)
+        except Exception as e:
+            print(f"Upozorenje: Pokusaj sa {model_name} nije uspio ({e}). Pokusavam sledeci...")
+
+    raise RuntimeError("Nijedan model nije vratio odgovor u predvidjenom vremenu.")
 
 def send_telegram_summary(posts_data):
     """Šalje kratak, pregledan rezime na Telegram sa linkom do Dashboarda i dugmetom"""
@@ -124,6 +133,7 @@ UPUTSTVA PO RUBRIKAMA:
    - KRITIČNO: NE prodajem web stranice!
    - Pozicioniraj me kao eksperta za procesnu optimizaciju, AI agente i digitalnu transformaciju malih i srednjih firmi (kako smanjiti troškove, eliminisati manuelni rad).
    - Ton: Autoritativan, edukativan, hook na početku, praktičan primjer i pitanje na kraju.
+   - Dužina svakog posta: oko 100 do 150 riječi (koncizno, udarno, bez prazne priče).
 
 VRATI ISKLJUČIVO JSON u ovom formatu:
 {{
