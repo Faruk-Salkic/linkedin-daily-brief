@@ -3,116 +3,152 @@ import urllib.request
 import urllib.parse
 import json
 import xml.etree.ElementTree as ET
+from datetime import datetime
 
 # 1. Konfiguracija
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6I1V-QFmP5Jxqs3yRMGIjuTmFRq0-8_MF8doY2E09zG_w")
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8961489048:AAEbkkfrqHWhf85RmbCHndpbn2W6oSiZ5yc")
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "8578372173")
+DASHBOARD_URL = "https://faruk-salkic.github.io/linkedin-daily-brief/"
 
 def fetch_rss_news(query, hl="hr", gl="HR"):
-    """Dohvata najnovije vijesti sa Google News RSS bez ikakvih eksternih biblioteka"""
+    """Dohvata najnovije vijesti sa Google News RSS"""
     encoded_query = urllib.parse.quote(query)
     url = f"https://news.google.com/rss/search?q={encoded_query}&hl={hl}&gl={gl}&ceid={gl}:{hl}"
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    items = []
     try:
         with urllib.request.urlopen(req, timeout=10) as response:
             xml_data = response.read()
             root = ET.fromstring(xml_data)
-            items = []
             for item in root.findall(".//item")[:5]:
                 title = item.find("title").text if item.find("title") is not None else ""
                 link = item.find("link").text if item.find("link") is not None else ""
-                items.append(f"- {title}\n  Link: {link}")
-            return "\n".join(items) if items else "Nema novih specifičnih vijesti za danas."
+                items.append({"title": title, "link": link})
     except Exception as e:
-        return f"Greška pri dohvatanju vijesti: {e}"
+        print(f"Greška pri dohvatanju RSS za {query}: {e}")
+    return items
 
-def call_gemini(prompt):
-    """Poziva Gemini API direktno preko standardnog REST poziva"""
+def call_gemini_json(prompt):
+    """Poziva Gemini API i traži strogi JSON odgovor"""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_KEY}"
     payload = {
         "contents": [{
             "parts": [{"text": prompt}]
         }],
         "generationConfig": {
-            "temperature": 0.7
+            "temperature": 0.7,
+            "responseMimeType": "application/json"
         }
     }
     data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
     with urllib.request.urlopen(req, timeout=90) as response:
         result = json.loads(response.read().decode('utf-8'))
-        return result['candidates'][0]['content']['parts'][0]['text']
+        raw_text = result['candidates'][0]['content']['parts'][0]['text']
+        return json.loads(raw_text)
 
-def send_telegram(text):
-    """Šalje formatiran tekst u Telegram chat"""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+def send_telegram_summary(posts_data):
+    """Šalje kratak, pregledan rezime na Telegram sa linkom do Dashboarda i dugmetom"""
+    today_str = datetime.now().strftime("%d.%m.%Y")
     
-    # Telegram limit je 4096 karaktera, dijelimo ako je duže
-    chunk_size = 4000
-    for i in range(0, len(text), chunk_size):
-        chunk = text[i:i+chunk_size]
-        payload = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": chunk,
-            "disable_web_page_preview": True
+    nekretnine = [p for p in posts_data if p.get("category") == "nekretnine"]
+    osiguranje = [p for p in posts_data if p.get("category") == "osiguranje"]
+    ai = [p for p in posts_data if p.get("category") == "ai"]
+
+    msg = f"☀️ <b>DOBRO JUTRO FARUK!</b>\n"
+    msg += f"Tvoj LinkedIn brifing za danas ({today_str}) je spreman na Dashboardu.\n\n"
+
+    msg += "🏢 <b>NEKRETNINE (HRVATSKA):</b>\n"
+    for i, p in enumerate(nekretnine[:3], 1):
+        msg += f"• {p['title']}\n"
+
+    msg += "\n🛡️ <b>OSIGURANJE (NJEMAČKA):</b>\n"
+    for i, p in enumerate(osiguranje[:3], 1):
+        msg += f"• {p['title']}\n"
+
+    msg += "\n🤖 <b>AI & DIGITALIZACIJA (TVOJ AUTORITET):</b>\n"
+    for i, p in enumerate(ai[:3], 1):
+        msg += f"• {p['title']}\n"
+
+    msg += f"\n👉 <b>Otvori Dashboard za kompletne postove i 1-klik copy:</b>\n{DASHBOARD_URL}"
+
+    # Telegram API sa inline tipkom (button)
+    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": msg,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": False,
+        "reply_markup": {
+            "inline_keyboard": [[
+                {"text": "🚀 Otvori Dashboard za Copy/Paste", "url": DASHBOARD_URL}
+            ]]
         }
-        data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
-        urllib.request.urlopen(req, timeout=10)
+    }
+    
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(telegram_url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
+    urllib.request.urlopen(req, timeout=10)
 
 def main():
-    print("Prikupljam vijesti...")
+    if not GEMINI_KEY:
+        raise ValueError("Nedostaje GEMINI_API_KEY environment varijabla! Postavi je u GitHub Secrets.")
+    if not TELEGRAM_TOKEN:
+        raise ValueError("Nedostaje TELEGRAM_BOT_TOKEN environment varijabla! Postavi je u GitHub Secrets.")
+
+    print("Prikupljam najnovije vijesti...")
     vijesti_nekretnine = fetch_rss_news("nekretnine Hrvatska", hl="hr", gl="HR")
     vijesti_osiguranje = fetch_rss_news("Versicherung Deutschland", hl="de", gl="DE")
     vijesti_ai = fetch_rss_news("AI business automation digital transformation workflow", hl="en", gl="US")
 
     prompt = f"""
 Ti si vrhunski B2B marketing strateg, savjetnik za digitalizaciju i LinkedIn copywriter.
-Tvoj zadatak je da pripremiš po 3 ključne vijesti sa gotovim LinkedIn objavama/uglovima za svaku od 3 rubrike (ukupno 3 rubrike x 3 vijesti/objave).
-Jezik: BHS (za publiku na Balkanu i u dijaspori).
+Tvoj zadatak je da pripremiš po 3 ključne vijesti sa gotovim LinkedIn objavama za svaku od 3 rubrike (ukupno tačno 9 postova).
+Jezik postova: BHS (za publiku na Balkanu i u dijaspori).
 
-DANAŠNJI IZVORI VIJESTI:
+IZVORI VIJESTI:
+Nekretnine HR: {json.dumps(vijesti_nekretnine, ensure_ascii=False)}
+Osiguranje DE: {json.dumps(vijesti_osiguranje, ensure_ascii=False)}
+AI & Biznis: {json.dumps(vijesti_ai, ensure_ascii=False)}
 
-[RUBRIKA 1: NEKRETNINE U HRVATSKOJ]
-{vijesti_nekretnine}
+UPUTSTVA PO RUBRIKAMA:
+1. category "nekretnine": 3 posta o cijenama kvadrata, novim zakonima, porezima ili investicijama u HR.
+2. category "osiguranje": 3 posta o njemačkom osiguranju (premije, digitalizacija, regulative, savjeti za preduzetnike u DE).
+3. category "ai": 3 posta za lični brend marketera/savjetnika:
+   - KRITIČNO: NE prodajem web stranice!
+   - Pozicioniraj me kao eksperta za procesnu optimizaciju, AI agente i digitalnu transformaciju malih i srednjih firmi (kako smanjiti troškove, eliminisati manuelni rad).
+   - Ton: Autoritativan, edukativan, hook na početku, praktičan primjer i pitanje na kraju.
 
-[RUBRIKA 2: OSIGURANJE U NJEMAČKOJ]
-{vijesti_osiguranje}
-
-[RUBRIKA 3: AI, AUTOMATIZACIJA I DIGITALIZACIJA BIZNISA (ZA MENE KAO SAVJETNIKA)]
-{vijesti_ai}
-
-UPUTSTVO ZA STRUKTURU:
-Za svaku rubriku izvuci po 3 najvažnije vijesti/teme i za svaku napiši kratak, spreman LinkedIn post:
-
-🏢 RUBRIKA 1: NEKRETNINE HRVATSKA (3 vijesti + postovi)
-- 1.1 Vijest + LinkedIn ugao
-- 1.2 Vijest + LinkedIn ugao
-- 1.3 Vijest + LinkedIn ugao
-(Fokus: cijene kvadrata, novi zakoni, investicije, savjeti za kupce/investitore)
-
-🛡️ RUBRIKA 2: OSIGURANJE NJEMAČKA (3 vijesti + postovi)
-- 2.1 Vijest + LinkedIn ugao
-- 2.2 Vijest + LinkedIn ugao
-- 2.3 Vijest + LinkedIn ugao
-(Fokus: promjene premija, digitalizacija, zakonske reforme, savjeti za preduzetnike i građane u DE)
-
-🤖 RUBRIKA 3: AI & DIGITALIZACIJA BIZNISA - MOJ AUTORITET (3 teme + postovi)
-- 3.1 Tema + LinkedIn post
-- 3.2 Tema + LinkedIn post
-- 3.3 Tema + LinkedIn post
-(KRITIČNO: NE prodajem web stranice! Pozicioniraj me kao eksperta za procesnu automatizaciju, AI agente i digitalnu transformaciju malih i srednjih firmi — kako firme gube novac na manuelni rad i kako moderni alati to rješavaju. Ton: autoritativan, edukativan, sa jasnim 'hook' početkom i pitanjem na kraju za komentare.)
-
-Formatiraj sve čisto, sa emojijima, odvojenim linijama i hashtagovima, tako da samo mogu izabrati šta želim objaviti taj dan!
+VRATI ISKLJUČIVO JSON u ovom formatu:
+{{
+  "date": "{datetime.now().strftime('%Y-%m-%d')}",
+  "date_formatted": "{datetime.now().strftime('%d. %B %Y')}",
+  "posts": [
+    {{
+      "id": "nekretnine-1",
+      "category": "nekretnine",
+      "title": "Kratak i jasan naslov vijesti",
+      "source_url": "link izvora ako postoji",
+      "content": "Puni LinkedIn post spreman za objavu sa emotikonima, jasnim pasusima i hashtagovima"
+    }}
+  ]
+}}
+Za 'posts' vrati tačno 9 stavki (3 za 'nekretnine', 3 za 'osiguranje', 3 za 'ai').
 """
-    print("Generišem LinkedIn postove preko Gemini AI-ja...")
-    postovi = call_gemini(prompt)
+    print("Pozivam Gemini AI za strukturisane podatke...")
+    data = call_gemini_json(prompt)
 
-    print("Šaljem na Telegram...")
-    zaglavlje = "☀️ DOBRO JUTRO! Tvoj današnji LinkedIn brifing je spreman:\n\n"
-    send_telegram(zaglavlje + postovi)
-    print("Uspješno poslato!")
+    # Sačuvaj u docs/data.json za Dashboard
+    os.makedirs("docs", exist_ok=True)
+    with open("docs/data.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    print("Sačuvano u docs/data.json!")
+
+    # Pošalji Telegram rezime sa dugmetom
+    print("Šaljem jutarnji sažetak na Telegram...")
+    send_telegram_summary(data.get("posts", []))
+    print("Uspješno završeno!")
 
 if __name__ == "__main__":
     main()

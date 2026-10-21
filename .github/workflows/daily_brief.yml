@@ -2,8 +2,8 @@ name: Daily LinkedIn Brief to Telegram & Dashboard
 
 on:
   schedule:
-    # Pokreće se svako jutro u 05:00 UTC (tačno u 07:00 po našem vremenu)
-    - cron: '0 5 * * *'
+    # Pokreće se svako jutro u 05:05 UTC (tačno 07:05 po našem vremenu - pomjereno 5 min radi izbjegavanja zagušenja na GitHubu)
+    - cron: '5 5 * * *'
   workflow_dispatch: # Mogućnost ručnog pokretanja na dugme
 
 permissions:
