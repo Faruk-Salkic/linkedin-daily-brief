@@ -1,3 +1,5 @@
 setup_github.py
 __pycache__/
 *.pyc
+.env
+*.env
