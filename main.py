@@ -31,7 +31,8 @@ def fetch_rss_news(query, hl="hr", gl="HR"):
 
 def call_gemini_json(prompt):
     """Poziva Gemini API i traži strogi JSON odgovor"""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_KEY}"
+    clean_key = GEMINI_KEY.strip() if GEMINI_KEY else ""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={clean_key}"
     payload = {
         "contents": [{
             "parts": [{"text": prompt}]
@@ -42,7 +43,11 @@ def call_gemini_json(prompt):
         }
     }
     data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
+    headers = {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': clean_key
+    }
+    req = urllib.request.Request(url, data=data, headers=headers, method='POST')
     with urllib.request.urlopen(req, timeout=90) as response:
         result = json.loads(response.read().decode('utf-8'))
         raw_text = result['candidates'][0]['content']['parts'][0]['text']
