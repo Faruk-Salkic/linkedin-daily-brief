@@ -1,0 +1,26 @@
+name: Daily LinkedIn Brief to Telegram
+
+on:
+  schedule:
+    # Pokreće se svako jutro u 05:30 UTC (što je 07:30 po našem vremenu - savršeno za prvu kafu)
+    - cron: '30 5 * * *'
+  workflow_dispatch: # Dugme u GitHubu da možeš pokrenuti kad god poželiš jednim klikom
+
+jobs:
+  run-daily-brief:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
