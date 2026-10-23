@@ -2,7 +2,9 @@ name: Daily LinkedIn Brief to Telegram & Dashboard
 
 on:
   schedule:
-    # Pokreće se svako jutro u 05:05 UTC (tačno 07:05 po našem vremenu - pomjereno 5 min radi izbjegavanja zagušenja na GitHubu)
+    # 06:05 UTC = 07:05 CET (ZIMA, UTC+1) — oktobar-mart
+    - cron: '5 6 * * *'
+    # 05:05 UTC = 07:05 CEST (LJETO, UTC+2) — mart-oktobar
     - cron: '5 5 * * *'
   workflow_dispatch: # Mogućnost ručnog pokretanja na dugme
 
