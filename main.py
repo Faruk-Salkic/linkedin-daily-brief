@@ -49,7 +49,7 @@ def call_gemini_json(prompt):
     }
     
     # Probaj redom zvanicno podrzane modele
-    for model_name in ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]:
+    for model_name in ["gemini-flash-latest", "gemini-2.5-flash", "gemini-1.5-flash"]:
         try:
             m_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
             req = urllib.request.Request(m_url, data=data, headers=headers, method='POST')
